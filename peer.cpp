@@ -1,6 +1,7 @@
 #include "config.h"
 #include "connect.hpp"
 #include "logger.hpp"
+#include "parser.hpp"
 #include "retry.hpp"
 #include <arpa/inet.h>
 #include <cstdlib>
@@ -10,38 +11,17 @@
 #include <string>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <unordered_map>
 
-void registerSelf(int discoverySocketFd) {
-  const char *registerSelf = "ping";
-  int bytesWritten = retry(
-      write, [](int bytes) { return bytes > 0; }, Config::DEFAULT_RETRY,
-      discoverySocketFd, registerSelf, strlen(registerSelf));
-  if (bytesWritten == -1) {
-    perror("Error while registering to discovery server");
-    exit(EXIT_FAILURE);
-  }
-
-  char discoveryServerPingReply[100] = {0};
-  int recvBytes =
-      recv(discoverySocketFd, discoveryServerPingReply, 99, 0);
-  if (recvBytes == 0) {
-    perror("Error during ping receive");
-    exit(EXIT_FAILURE);
-  }
-
-  logger("Connection established with discovery server");
-}
-
-void registerUserNameAndFetchPasskey(int discoverySocketFd, char *user,
-                                     char *passkey) {
-  using namespace std;
+using namespace std;
+void registerUserNameAndFetchPasskey(int discoverySocketFd, string &user,
+                                     string &passkey) {
 
   string username("");
   cout << "Enter username : ";
   cin >> username;
   username = username.substr(0, Config::MAX_USERNAME_LENGTH);
-
-  string payload = "username:" + username;
+  string payload = "register:username:" + username;
 
   int usernameBytesWritten = retry(
       write, [](int bytes) { return bytes > 0; }, Config::DEFAULT_RETRY,
@@ -61,16 +41,29 @@ void registerUserNameAndFetchPasskey(int discoverySocketFd, char *user,
   }
 
   if (recvBytes > 0 && recvBytes < 1023) {
-    if (strncmp(userRegisterationResponse, Config::USERNAME_EXISTS,
-                strlen(Config::USERNAME_EXISTS)) == 0) {
-      userRegisterationResponse[recvBytes] = '\0';
+    unordered_map<string, string> messageData;
+    parseMessage(userRegisterationResponse, messageData);
+    auto action = messageData.find("action");
 
-      cout << "username : " << username
-           << " already exists, please choose another." << endl;
-      return registerUserNameAndFetchPasskey(discoverySocketFd, user, passkey);
-    } else {
-      user = (char *)username.c_str();
-      passkey = userRegisterationResponse;
+    if (action->second == "discovery") {
+      auto message = messageData.find("message");
+      if (message == messageData.end()) {
+        return;
+      }
+      if (message->second == "exists") {
+        cout << "Username already exists, Please choose another" << endl;
+        return registerUserNameAndFetchPasskey(discoverySocketFd, user,
+                                               passkey);
+      }
+
+      if (message->second == "created") {
+        auto passkeyData = messageData.find("passkey");
+        if (passkeyData == messageData.end()) {
+          return;
+        }
+        passkey = passkeyData->second;
+        user = username;
+      }
     }
   }
 
@@ -81,7 +74,6 @@ void registerUserNameAndFetchPasskey(int discoverySocketFd, char *user,
 }
 
 void peer() {
-  using namespace std;
   logger("Starting peer...");
 
   // Establish connection with Discovery server
@@ -95,12 +87,12 @@ void peer() {
     exit(EXIT_FAILURE);
   }
 
-  // Register self
-  registerSelf(discoverySocketFd);
-
   // Block here to register username & fetch passkey
-  char user[20] = {0};
-  char passkey[20] = {0};
+  string user;
+  string passkey;
   registerUserNameAndFetchPasskey(discoverySocketFd, user, passkey);
+  cout << "Please share your username & passkey to another peer for "
+          "establishing connection."
+       << endl;
 
 }

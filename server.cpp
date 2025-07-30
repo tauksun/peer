@@ -1,3 +1,4 @@
+#include "config.h"
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -52,7 +53,7 @@ void server() {
   // Bind
   struct sockaddr_in add;
   add.sin_family = AF_INET;
-  add.sin_port = htons(4345);
+  add.sin_port = htons(Config::SELF_TCP_SERVER_PORT);
   add.sin_addr.s_addr = INADDR_ANY;
 
   int bindResult = bind(socketDescriptor, (struct sockaddr *)&add, sizeof(add));

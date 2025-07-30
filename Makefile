@@ -2,7 +2,7 @@ CXX = clang++
 CXXFLAGS = -Wall -g
 
 TARGET = build/exec/peer
-SRCS = main.cpp server.cpp client.cpp
+SRCS = main.cpp server.cpp connect.cpp parser.cpp peer.cpp
 OBJDIR = build/objects
 OBJS = $(patsubst %.cpp,$(OBJDIR)/%.o,$(SRCS))
 
