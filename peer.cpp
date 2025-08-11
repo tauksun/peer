@@ -95,4 +95,8 @@ void peer() {
           "establishing connection."
        << endl;
 
+  // TODO: Start TCP server in another thread, while managing Chat in main
+  // thread. Show the incoming messages in main thread ( Think if a data
+  // structure with mutex is needed to write data into from server thread,
+  // which can be read by main thread & shown as incoming messages )
 }
