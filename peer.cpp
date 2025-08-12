@@ -3,6 +3,7 @@
 #include "logger.hpp"
 #include "parser.hpp"
 #include "retry.hpp"
+#include "server.hpp"
 #include <arpa/inet.h>
 #include <cstdlib>
 #include <cstring>
@@ -10,6 +11,7 @@
 #include <netinet/in.h>
 #include <string>
 #include <sys/socket.h>
+#include <thread>
 #include <unistd.h>
 #include <unordered_map>
 
@@ -99,4 +101,8 @@ void peer() {
   // thread. Show the incoming messages in main thread ( Think if a data
   // structure with mutex is needed to write data into from server thread,
   // which can be read by main thread & shown as incoming messages )
+  // Start TCP server in another thread, while managing Chat in main
+  // thread.
+  thread serve(server);
+  serve.detach();
 }
