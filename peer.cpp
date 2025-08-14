@@ -14,6 +14,7 @@
 #include <thread>
 #include <unistd.h>
 #include <unordered_map>
+#include <queue>
 
 using namespace std;
 void registerUserNameAndFetchPasskey(int discoverySocketFd, string &user,
@@ -103,6 +104,10 @@ void peer() {
   // which can be read by main thread & shown as incoming messages )
   // Start TCP server in another thread, while managing Chat in main
   // thread.
-  thread serve(server);
-  serve.detach();
+  queue<string> peerMessages;
+  queue<string> discoveryServerMessages;
+  thread serve(server, peerMessages, discoveryServerMessages);
+  while (1) {
+  }
+  serve.join();
 }
