@@ -7,14 +7,16 @@
 #include <arpa/inet.h>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <iostream>
+#include <mutex>
 #include <netinet/in.h>
+#include <queue>
 #include <string>
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
 #include <unordered_map>
-#include <queue>
 
 using namespace std;
 void registerUserNameAndFetchPasskey(int discoverySocketFd, string &user,
@@ -98,16 +100,24 @@ void peer() {
           "establishing connection."
        << endl;
 
-  // TODO: Start TCP server in another thread, while managing Chat in main
-  // thread. Show the incoming messages in main thread ( Think if a data
-  // structure with mutex is needed to write data into from server thread,
-  // which can be read by main thread & shown as incoming messages )
   // Start TCP server in another thread, while managing Chat in main
   // thread.
+  mutex messagesMutex;
   queue<string> peerMessages;
   queue<string> discoveryServerMessages;
-  thread serve(server, peerMessages, discoveryServerMessages);
+  thread serve(server, ref(peerMessages), ref(discoveryServerMessages),
+               ref(messagesMutex));
   while (1) {
+    // Read messages from queue
+    if (1) {
+      lock_guard<mutex> mutex(messagesMutex);
+      while (!peerMessages.empty()) {
+        string msg = peerMessages.front();
+        peerMessages.pop();
+        cout << "@" << msg << endl;
+      }
+    }
+
   }
   serve.join();
 }

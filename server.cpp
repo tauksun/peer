@@ -1,9 +1,9 @@
 #include "config.h"
-#include "logger.hpp"
 #include "parser.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <netinet/in.h>
 #include <queue>
 #include <stdio.h>
@@ -17,7 +17,8 @@
 using namespace std;
 
 void handleClient(int readyFd, int epollfd, queue<string> &peerMessages,
-                  queue<string> &discoveryServerMessages) {
+                  queue<string> &discoveryServerMessages,
+                  mutex &messagesMutex) {
   char clientMessage[1024] = {0};
 
   // TODO : Handle partial reads for logical parsing
@@ -34,8 +35,6 @@ void handleClient(int readyFd, int epollfd, queue<string> &peerMessages,
   else
     clientMessage[1023] = '\0';
 
-  logger("clientMessage : ", clientMessage);
-
   string serverReply;
   unordered_map<string, string> messageData;
   parseMessage(clientMessage, messageData);
@@ -43,6 +42,8 @@ void handleClient(int readyFd, int epollfd, queue<string> &peerMessages,
   auto action = messageData.find("action");
 
   if (action->second == "peer") {
+    lock_guard<mutex> lock(messagesMutex);
+
     // Peer Message
     auto user = messageData.find("username");
     auto message = messageData.find("message");
@@ -56,8 +57,8 @@ void handleClient(int readyFd, int epollfd, queue<string> &peerMessages,
   }
 }
 
-void server(queue<string> &peerMessages,
-            queue<string> &discoveryServerMessages) {
+void server(queue<string> &peerMessages, queue<string> &discoveryServerMessages,
+            mutex &messagesMutex) {
   cout << "Starting server" << endl;
   // Socket
   int socketDescriptor = socket(AF_INET, SOCK_STREAM, 0);
@@ -139,7 +140,7 @@ void server(queue<string> &peerMessages,
         }
       } else {
         handleClient(events[i].data.fd, epollfd, peerMessages,
-                     discoveryServerMessages);
+                     discoveryServerMessages, messagesMutex);
       }
     }
   }
