@@ -2,9 +2,11 @@
 #include "connect.hpp"
 #include "logger.hpp"
 #include "parser.hpp"
+#include "readAndSendMessage.hpp"
 #include "retry.hpp"
 #include "server.hpp"
 #include <arpa/inet.h>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
@@ -102,22 +104,30 @@ void peer() {
 
   // Start TCP server in another thread, while managing Chat in main
   // thread.
+
   mutex messagesMutex;
+  condition_variable wakeup;
   queue<string> peerMessages;
   queue<string> discoveryServerMessages;
   thread serve(server, ref(peerMessages), ref(discoveryServerMessages),
-               ref(messagesMutex));
+               ref(messagesMutex), ref(wakeup));
+  thread inputAndSendMessage(takeInput);
+
   while (1) {
-    // Read messages from queue
-    if (1) {
-      lock_guard<mutex> mutex(messagesMutex);
-      while (!peerMessages.empty()) {
-        string msg = peerMessages.front();
-        peerMessages.pop();
-        cout << "@" << msg << endl;
-      }
+
+    unique_lock<mutex> lock(messagesMutex);
+    wakeup.wait(lock, [&peerMessages]() { return !peerMessages.empty(); });
+
+    while (!peerMessages.empty()) {
+      // Read messages from queue
+      string msg = peerMessages.front();
+      peerMessages.pop();
+      cout << "@" << msg << endl;
     }
 
+    lock.unlock();
   }
+
   serve.join();
+  inputAndSendMessage.join();
 }

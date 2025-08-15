@@ -1,5 +1,6 @@
 #include "config.h"
 #include "parser.hpp"
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -51,6 +52,7 @@ void handleClient(int readyFd, int epollfd, queue<string> &peerMessages,
     peerMessages.push(msg);
   } else if (action->second == "discovery") {
     // Message from discovery server
+    lock_guard<mutex> lock(messagesMutex);
     auto message = messageData.find("message");
     string msg = "discovery : " + message->second;
     discoveryServerMessages.push(msg);
@@ -58,7 +60,7 @@ void handleClient(int readyFd, int epollfd, queue<string> &peerMessages,
 }
 
 void server(queue<string> &peerMessages, queue<string> &discoveryServerMessages,
-            mutex &messagesMutex) {
+            mutex &messagesMutex, condition_variable &wakeup) {
   cout << "Starting server" << endl;
   // Socket
   int socketDescriptor = socket(AF_INET, SOCK_STREAM, 0);
@@ -142,6 +144,12 @@ void server(queue<string> &peerMessages, queue<string> &discoveryServerMessages,
         handleClient(events[i].data.fd, epollfd, peerMessages,
                      discoveryServerMessages, messagesMutex);
       }
+    }
+
+    if (!peerMessages.empty() || !discoveryServerMessages.empty()) {
+      lock_guard<mutex> lock(messagesMutex);
+      // Wake up main thread to display messages
+      wakeup.notify_one();
     }
   }
 }
