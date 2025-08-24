@@ -1,23 +1,28 @@
 #include "config.h"
+#include "parser.hpp"
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <netinet/in.h>
+#include <queue>
 #include <stdio.h>
 #include <sys/epoll.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <unordered_map>
 #include <vector>
 
 using namespace std;
 
-void handleClient(int readyFd, int epollfd) {
+void handleClient(int readyFd, int epollfd, queue<string> &peerMessages,
+                  queue<string> &discoveryServerMessages,
+                  mutex &messagesMutex) {
   char clientMessage[1024] = {0};
 
-  // TODO : Make sockets non-blocking with fnctl
   // TODO : Handle partial reads for logical parsing
-
   int recvValue = recv(readyFd, clientMessage, 1023, 0);
 
   if (recvValue <= 0) {
@@ -31,20 +36,31 @@ void handleClient(int readyFd, int epollfd) {
   else
     clientMessage[1023] = '\0';
 
-  // TODO : Handle client closing
+  string serverReply;
+  unordered_map<string, string> messageData;
+  parseMessage(clientMessage, messageData);
 
-  if ((strcmp(clientMessage, "x") != 0)) {
-    string serverReply = clientMessage;
-    write(readyFd, serverReply.c_str(), serverReply.size());
-  } else {
-    string serverReply = "Closing connection";
-    write(readyFd, serverReply.c_str(), serverReply.size());
-    close(readyFd);
-    epoll_ctl(epollfd, EPOLL_CTL_DEL, readyFd, nullptr);
+  auto action = messageData.find("action");
+
+  if (action->second == "peer") {
+    lock_guard<mutex> lock(messagesMutex);
+
+    // Peer Message
+    auto user = messageData.find("username");
+    auto message = messageData.find("message");
+    string msg = user->second + " : " + message->second;
+    peerMessages.push(msg);
+  } else if (action->second == "discovery") {
+    // Message from discovery server
+    lock_guard<mutex> lock(messagesMutex);
+    auto message = messageData.find("message");
+    string msg = "discovery : " + message->second;
+    discoveryServerMessages.push(msg);
   }
 }
 
-void server() {
+void server(queue<string> &peerMessages, queue<string> &discoveryServerMessages,
+            mutex &messagesMutex, condition_variable &wakeup) {
   cout << "Starting server" << endl;
   // Socket
   int socketDescriptor = socket(AF_INET, SOCK_STREAM, 0);
@@ -74,9 +90,6 @@ void server() {
   if (listenResult != 0) {
     throw "Error while listening on socket";
   }
-
-  // TODO : Think & Implement client functionality alongside server
-  // TODO : Implement Friend discovery server
 
   // Accept & Process Clients
   // E-Poll
@@ -128,8 +141,15 @@ void server() {
           close(clientDescriptor);
         }
       } else {
-        handleClient(events[i].data.fd, epollfd);
+        handleClient(events[i].data.fd, epollfd, peerMessages,
+                     discoveryServerMessages, messagesMutex);
       }
+    }
+
+    if (!peerMessages.empty() || !discoveryServerMessages.empty()) {
+      lock_guard<mutex> lock(messagesMutex);
+      // Wake up main thread to display messages
+      wakeup.notify_one();
     }
   }
 }
