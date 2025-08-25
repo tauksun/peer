@@ -4,7 +4,7 @@
 #include <string>
 #include <unordered_map>
 
-void parseMessage(char *message,
+void parseMessage(const char *message,
                   std::unordered_map<std::string, std::string> &messageData);
 
 #endif

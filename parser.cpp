@@ -4,7 +4,7 @@
 
 using namespace std;
 
-void parseMessage(char *message, unordered_map<string, string> &messageData) {
+void parseMessage(const char *message, unordered_map<string, string> &messageData) {
   // Message format
   // action:key:value:key:value...
   int count = 0;
